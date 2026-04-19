@@ -3,6 +3,7 @@ package headers
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -35,7 +36,13 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("There must be no whitespace in the field name.")
 	}
 
-	h[parts[0]] = strings.TrimSpace(parts[1])
+	r, _ := regexp.Compile("^[a-zA-z0-9!#$%&'*+\\-.^_`|~]+$")
+
+	if !r.MatchString(parts[0]) {
+		return 0, false, errors.New("Invalid characters in header field.")
+	}
+
+	h[strings.ToLower(parts[0])] = strings.TrimSpace(parts[1])
 
 	return l, false, nil
 }
