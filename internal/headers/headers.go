@@ -3,6 +3,7 @@ package headers
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -42,7 +43,14 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("Invalid characters in header field.")
 	}
 
-	h[strings.ToLower(parts[0])] = strings.TrimSpace(parts[1])
+	val, ok := h[strings.ToLower(parts[0])]
+	if ok {
+		val = fmt.Sprintf("%s, %s", val, strings.TrimSpace(parts[1]))
+	} else {
+		val = strings.TrimSpace(parts[1])
+	}
+
+	h[strings.ToLower(parts[0])] = val
 
 	return l, false, nil
 }
