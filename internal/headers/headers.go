@@ -37,9 +37,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("There must be no whitespace in the field name.")
 	}
 
-	r, _ := regexp.Compile("^[a-zA-z0-9!#$%&'*+\\-.^_`|~]+$")
+	r, _ := regexp.Compile("^[a-zA-Z0-9!#$%&'*+\\-.^_`|~]+$")
 
 	if !r.MatchString(parts[0]) {
+		fmt.Println(parts[0])
+		fmt.Println(r.MatchString(parts[0]))
+		fmt.Println(r)
 		return 0, false, errors.New("Invalid characters in header field.")
 	}
 

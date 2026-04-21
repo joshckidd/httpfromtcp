@@ -3,6 +3,7 @@ package request
 import (
 	"bytes"
 	"errors"
+	"httpfromtcp/internal/headers"
 	"io"
 	"regexp"
 	"strings"
@@ -11,12 +12,14 @@ import (
 type State int
 
 const (
-	Initialized State = iota
-	Done
+	initialized State = iota
+	done
+	parsingHeaders
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	State       State
 }
 
@@ -28,15 +31,16 @@ type RequestLine struct {
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := Request{
-		State: Initialized,
+		State:   initialized,
+		Headers: headers.NewHeaders(),
 	}
 	buf := make([]byte, 8)
 	bytesRead := 0
 
-	for req.State != Done {
+	for req.State != done {
 		n, err := reader.Read(buf[bytesRead:])
-		if err == io.EOF {
-			req.State = Done
+		if n == 0 && err == io.EOF {
+			req.State = done
 			break
 		}
 		if err != nil {
@@ -57,7 +61,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		if m != 0 {
 			newBuf := make([]byte, len(buf))
-			copy(newBuf, buf[bytesRead:])
+			copy(newBuf, buf[m:])
 			buf = newBuf
 			bytesRead -= m
 		}
@@ -109,11 +113,22 @@ func parseRequestLine(req []byte) (*Request, int, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	req, n, err := parseRequestLine(data)
+	switch r.State {
+	case initialized:
+		req, n, err := parseRequestLine(data)
 
-	if n != 0 {
-		r.State = Done
-		r.RequestLine = req.RequestLine
+		if n != 0 {
+			r.State = parsingHeaders
+			r.RequestLine = req.RequestLine
+		}
+		return n, err
+	case parsingHeaders:
+		n, d, err := r.Headers.Parse(data)
+		if d {
+			r.State = done
+		}
+
+		return n, err
 	}
-	return n, err
+	return 0, nil
 }
