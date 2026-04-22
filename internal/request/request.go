@@ -39,11 +39,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for req.State != done {
 		n, err := reader.Read(buf[bytesRead:])
-		if n == 0 && err == io.EOF {
+		if n == 0 && err == io.EOF && bytesRead == 0 {
 			req.State = done
 			break
 		}
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return &req, err
 		}
 		bytesRead += n
