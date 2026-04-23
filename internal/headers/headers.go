@@ -40,9 +40,6 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	r, _ := regexp.Compile("^[a-zA-Z0-9!#$%&'*+\\-.^_`|~]+$")
 
 	if !r.MatchString(parts[0]) {
-		fmt.Println(parts[0])
-		fmt.Println(r.MatchString(parts[0]))
-		fmt.Println(r)
 		return 0, false, errors.New("Invalid characters in header field.")
 	}
 
@@ -56,4 +53,15 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	h[strings.ToLower(parts[0])] = val
 
 	return l, false, nil
+}
+
+func (h Headers) Get(key string) (string, error) {
+	var err error
+	err = nil
+	v, ok := h[strings.ToLower(key)]
+	if !ok {
+		err = errors.New("Invalid header key.")
+	}
+
+	return v, err
 }

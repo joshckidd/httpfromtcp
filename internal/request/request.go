@@ -6,6 +6,7 @@ import (
 	"httpfromtcp/internal/headers"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -15,11 +16,13 @@ const (
 	initialized State = iota
 	done
 	parsingHeaders
+	parsingBody
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	State       State
 }
 
@@ -33,15 +36,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := Request{
 		State:   initialized,
 		Headers: headers.NewHeaders(),
+		Body:    nil,
 	}
 	buf := make([]byte, 8)
 	bytesRead := 0
 
 	for req.State != done {
 		n, err := reader.Read(buf[bytesRead:])
-		if n == 0 && err == io.EOF && bytesRead == 0 {
-			req.State = done
-			break
+		if n == 0 && err == io.EOF && bytesRead == 0 && req.Headers["content-length"] != "" && req.Headers["content-length"] != "0" {
+			return &req, errors.New("Request body too short.")
 		}
 		if err != nil && err != io.EOF {
 			return &req, err
@@ -125,10 +128,35 @@ func (r *Request) parse(data []byte) (int, error) {
 	case parsingHeaders:
 		n, d, err := r.Headers.Parse(data)
 		if d {
-			r.State = done
+			r.State = parsingBody
 		}
 
 		return n, err
+	case parsingBody:
+		cl, err := r.Headers.Get("content-length")
+		if err != nil {
+			r.State = done
+			return 0, nil
+		}
+		r.Body = append(r.Body, data...)
+
+		cli, err := strconv.Atoi(cl)
+		if err != nil {
+			r.State = done
+			return len(data), errors.New("Invalid content-length.")
+		}
+
+		if len(r.Body) > cli {
+			r.State = done
+			return len(data), errors.New("Body is longer than content-length.")
+		}
+
+		if len(r.Body) == cli {
+			r.State = done
+			return len(data), nil
+		}
+
+		return len(data), nil
 	}
 	return 0, nil
 }
