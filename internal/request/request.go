@@ -51,22 +51,26 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 		bytesRead += n
 
-		if bytesRead == len(buf) {
-			newBuf := make([]byte, len(buf)*2)
-			copy(newBuf, buf)
-			buf = newBuf
-		}
+		for bytesRead > 0 {
+			if bytesRead == len(buf) {
+				newBuf := make([]byte, len(buf)*2)
+				copy(newBuf, buf)
+				buf = newBuf
+			}
 
-		m, err := req.parse(buf[:bytesRead])
-		if err != nil {
-			return &req, err
-		}
+			m, err := req.parse(buf[:bytesRead])
+			if err != nil {
+				return &req, err
+			}
 
-		if m != 0 {
-			newBuf := make([]byte, len(buf))
-			copy(newBuf, buf[m:])
-			buf = newBuf
-			bytesRead -= m
+			if m != 0 {
+				newBuf := make([]byte, len(buf))
+				copy(newBuf, buf[m:])
+				buf = newBuf
+				bytesRead -= m
+			} else {
+				break
+			}
 		}
 	}
 
@@ -128,7 +132,11 @@ func (r *Request) parse(data []byte) (int, error) {
 	case parsingHeaders:
 		n, d, err := r.Headers.Parse(data)
 		if d {
-			r.State = parsingBody
+			if r.Headers["content-length"] != "" && r.Headers["content-length"] != "0" {
+				r.State = parsingBody
+			} else {
+				r.State = done
+			}
 		}
 
 		return n, err
