@@ -1,12 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -27,11 +33,44 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
-	w.Headers["content-type"] = "text/html"
-	switch req.RequestLine.RequestTarget {
-	case "/yourproblem":
-		w.StatusCode = response.S400
-		w.Body.Write([]byte(`<html>
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+		hbUrl := fmt.Sprintf("https://httpbin.org/%s", req.RequestLine.RequestTarget[9:])
+		w.StatusCode = response.S200
+		delete(w.Headers, "content-length")
+		w.Headers["content-type"] = "text/html"
+		w.Headers["transfer-encoding"] = "chunked"
+		w.Headers["trailers"] = "X-Content-SHA256, X-Content-Length"
+		w.WriteStatusLine()
+		w.WriteHeaders()
+		res, _ := http.Get(hbUrl)
+		buf := make([]byte, 1024)
+		var fullBody []byte
+		for {
+			n, err := res.Body.Read(buf)
+			if n == 0 || err != nil {
+				break
+			}
+			ch := make([]byte, n)
+			copy(ch, buf[:n])
+			w.WriteChunkedBody(ch)
+			newFull := make([]byte, n+len(fullBody))
+			copy(newFull, fullBody)
+			copy(newFull[len(fullBody):], ch)
+			fullBody = newFull
+		}
+		w.WriteChunkedBodyDone()
+		cs := sha256.Sum256(fullBody)
+		w.Trailers = headers.NewHeaders()
+		w.Trailers["x-content-sha256"] = fmt.Sprintf("%x", cs)
+		w.Trailers["x-content-length"] = strconv.Itoa(len(fullBody))
+		w.WriteTrailers()
+	} else {
+
+		w.Headers["content-type"] = "text/html"
+		switch req.RequestLine.RequestTarget {
+		case "/yourproblem":
+			w.StatusCode = response.S400
+			w.Body.Write([]byte(`<html>
   <head>
     <title>400 Bad Request</title>
   </head>
@@ -41,9 +80,9 @@ func handler(w *response.Writer, req *request.Request) {
   </body>
 </html>
 `))
-	case "/myproblem":
-		w.StatusCode = response.S500
-		w.Body.Write([]byte(`<html>
+		case "/myproblem":
+			w.StatusCode = response.S500
+			w.Body.Write([]byte(`<html>
   <head>
     <title>500 Internal Server Error</title>
   </head>
@@ -53,9 +92,14 @@ func handler(w *response.Writer, req *request.Request) {
   </body>
 </html>
 `))
-	default:
-		w.StatusCode = response.S200
-		w.Body.Write([]byte(`<html>
+		case "/video":
+			w.StatusCode = response.S200
+			w.Headers["content-type"] = "video/mp4"
+			data, _ := os.ReadFile("assets/vim.mp4")
+			w.Body.Write(data)
+		default:
+			w.StatusCode = response.S200
+			w.Body.Write([]byte(`<html>
   <head>
     <title>200 OK</title>
   </head>
@@ -65,6 +109,8 @@ func handler(w *response.Writer, req *request.Request) {
   </body>
 </html>
 `))
+		}
+		w.Headers["content-length"] = strconv.Itoa(w.Body.Len())
+		w.Write()
 	}
-	w.Write()
 }

@@ -19,6 +19,7 @@ const (
 type Writer struct {
 	Conn       net.Conn
 	Headers    headers.Headers
+	Trailers   headers.Headers
 	StatusCode StatusCode
 	Body       *bytes.Buffer
 }
@@ -46,10 +47,20 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 }
 
 func (w *Writer) WriteHeaders() error {
-	w.Headers["content-length"] = strconv.Itoa(w.Body.Len())
-
 	var err error
 	for k, v := range w.Headers {
+		_, err = w.Conn.Write([]byte(fmt.Sprintf("%s: %s\r\n", k, v)))
+		if err != nil {
+			break
+		}
+	}
+	w.Conn.Write([]byte("\r\n"))
+	return err
+}
+
+func (w *Writer) WriteTrailers() error {
+	var err error
+	for k, v := range w.Trailers {
 		_, err = w.Conn.Write([]byte(fmt.Sprintf("%s: %s\r\n", k, v)))
 		if err != nil {
 			break
@@ -62,6 +73,15 @@ func (w *Writer) WriteHeaders() error {
 func (w *Writer) WriteBody() error {
 	_, err := w.Body.WriteTo(w.Conn)
 	return err
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	c := fmt.Sprintf("%X\r\n%s\r\n", len(p), p)
+	return w.Conn.Write([]byte(c))
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	return w.Conn.Write([]byte("0\r\n"))
 }
 
 func (w *Writer) Write() error {
